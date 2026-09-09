@@ -21,10 +21,11 @@ import RouterEndpoints from "@/common/RouterEndpoints";
 import { RadioBoxItem } from "@/components/ui/RadioBox";
 import { SetStoreFunction, createStore, reconcile } from "solid-js/store";
 import { t } from "@nerimity/i18lite";
+import { CHANNEL_PERMISSIONS, hasBit } from "@/chat-api/Bitwise";
 
 export default function Pane() {
   const params = useParams<{ serverId: string }>();
-  const { header } = useStore();
+  const { header, account } = useStore();
 
   const [questions, setQuestions] = createStore<RawServerWelcomeQuestion[]>([]);
 
@@ -47,13 +48,13 @@ export default function Pane() {
   });
 
   return (
-    <>
+    <Show when={account.isAuthenticated()}>
       <div class={styles.pane}>
         <WelcomeMessage />
         <QuestionList questions={questions} updateQuestions={setQuestions} />
       </div>
       <ContinueFooter />
-    </>
+    </Show>
   );
 }
 
@@ -142,7 +143,7 @@ const AnswerItem = (props: {
   updateQuestions: SetStoreFunction<RawServerWelcomeQuestion[]>;
 }) => {
   const params = useParams<{ serverId: string }>();
-  const { serverRoles, channels } = useStore();
+  const { serverRoles, channels, servers } = useStore();
   const onChange = async (newVal: boolean) => {
     if (newVal) {
       await addAnswerToMember(params.serverId, props.answer.id);
@@ -188,6 +189,12 @@ const AnswerItem = (props: {
     }
   };
 
+
+  const server = servers.get(params.serverId);
+
+
+
+
   const roles = () =>
     props.answer.roleIds
       .map((roleId) => serverRoles.get(params.serverId, roleId)!)
@@ -197,9 +204,20 @@ const AnswerItem = (props: {
   const serverChannels = () =>
     channels.getSortedChannelsByServerId(params.serverId, false, false);
 
+
   const questionChannels = () =>
-    serverChannels().filter((c) =>
-      c.permissions?.find((p) => props.answer.roleIds.includes(p.roleId))
+    serverChannels().filter((c) => {
+
+      const defaultPerms = c.permissions?.find(p => p.roleId === server?.defaultRoleId);
+      if (hasBit(defaultPerms?.permissions || 0, CHANNEL_PERMISSIONS.PUBLIC_CHANNEL.bit)) return false;
+
+      const perms = c.permissions?.find((p) => props.answer.roleIds.includes(p.roleId));
+
+
+      return hasBit(perms?.permissions || 0, CHANNEL_PERMISSIONS.PUBLIC_CHANNEL.bit)
+
+
+    }
     );
 
   return (
